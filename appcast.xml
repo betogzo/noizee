@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>Noizee Updates</title>
+        <link>https://github.com/betogzo/noizee/releases</link>
+        <description>Most recent updates for Noizee, a native macOS YouTube Music client.</description>
+        <language>en</language>
+
+        <item>
+            <title>Version 0.9.0</title>
+            <sparkle:releaseNotesLink>https://github.com/betogzo/noizee/releases/tag/v0.9.0</sparkle:releaseNotesLink>
+            <pubDate>Fri, 01 May 2026 03:41:58 +0000</pubDate>
+            <enclosure
+                url="https://github.com/betogzo/noizee/releases/download/v0.9.0/noizee-v0.9.0.dmg"
+                sparkle:version="16"
+                sparkle:shortVersionString="0.9.0"
+                length="8469770"
+                type="application/octet-stream"
+                sparkle:edSignature="1ybW8UZ89z0OJ+ASVOkAZfn2tRy2zShPSVNWd2Qjf/LhRc46QVlYy/UERE90W7Y3L9DiSexNbSPOWCJujyx1AQ=="/>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        </item>
+
+    </channel>
+</rss>

@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Debug Noizee",
+            "target": "Noizee",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Noizee"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Release Noizee",
+            "target": "Noizee",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Noizee"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Debug api-explorer",
+            "target": "api-explorer",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug api-explorer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "name": "Release api-explorer",
+            "target": "api-explorer",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release api-explorer"
+        }
+    ]
+}

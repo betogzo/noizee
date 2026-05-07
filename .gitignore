@@ -1,0 +1,79 @@
+# Build artifacts
+.build/
+DerivedData/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.profraw
+
+# Xcode (auto-generated from Package.swift)
+*.xcodeproj/
+!NoizeeUITests.xcodeproj/
+*.xcworkspace/
+*.xcuserdata/
+xcuserdata/
+
+# Swift Package Manager
+/.swiftpm
+Packages/
+Package.pins
+Package.resolved
+.netrc
+
+# CocoaPods (if ever used)
+Pods/
+
+# Carthage (if ever used)
+Carthage/Build
+Carthage/Checkouts
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# OS files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Thumbnails
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# AI coding assistants (local/editor state — not shared project guidance like AGENTS.md / .agents/)
+.cursor/
+.claude/
+.aider*
+.aider.chat.history.md
+.amazonq/
+.continue/
+.gemini/
+.kilocode/
+.specify/
+.trae/
+.windsurf/
+CLAUDE.local.md
+.cursorrules.local
+AGENTS.local.md
+*.local.prompt.md
+.mcp.json.local
+
+# Environment and secrets
+.env
+.env.local
+*.pem
+
+TEMP_*
+build/
