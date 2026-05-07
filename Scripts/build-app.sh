@@ -32,9 +32,17 @@ fi
 
 echo "🔨 Building $APP_NAME ($CONF) for ${ARCH_LIST[*]}..."
 
-# Clean previous build
+# Clean previous app bundle staging
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
+
+# Multi-arch: wipe SwiftPM triple outputs before building. Stale llbuild manifests can
+# fail with bogus errors mentioning `*.exe` on macOS — that suffix is SPM/llbuild naming,
+# not a Windows binary; clearing these trees fixes most cases without dropping checkouts.
+if [[ ${#ARCH_LIST[@]} -gt 1 ]]; then
+  echo "  → Limpando .build/*(arm64|x86_64)-apple-macosx (multi-arquitetura)..."
+  rm -rf "${ROOT}/.build/arm64-apple-macosx" "${ROOT}/.build/x86_64-apple-macosx"
+fi
 
 # Build for each architecture
 for ARCH in "${ARCH_LIST[@]}"; do

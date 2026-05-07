@@ -77,3 +77,4 @@ AGENTS.local.md
 
 TEMP_*
 build/
+dist/
