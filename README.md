@@ -53,6 +53,33 @@ Open the bundle manually if you want:
 open .build/app/Noizee.app
 ```
 
+## Distribution (DMG installer)
+
+To ship a drag-to-**Applications** disk image with a large app icon and an **Applications** shortcut, use [create-dmg](https://github.com/create-dmg/create-dmg) (not a SwiftPM dependency — install via Homebrew):
+
+```bash
+brew install create-dmg
+```
+
+1. **Build** a signed `.app` (example: universal **Apple Silicon + Intel**, ad-hoc signing for local distribution):
+
+   ```bash
+   ARCHES="arm64 x86_64" NOIZEE_SIGNING=adhoc ./Scripts/build-app.sh release
+   ```
+
+   For a single-architecture build, omit `ARCHES` (the script defaults to the host CPU).
+
+2. **Create the DMG** (reads `version.env` for the output filename; writes under `dist/`, which is gitignored):
+
+   ```bash
+   ./Scripts/create-installer-dmg.sh
+   ```
+
+   - Custom output path: `OUTPUT_PATH=~/Desktop/Noizee.dmg ./Scripts/create-installer-dmg.sh`
+   - Optional window background: `NOIZEE_DMG_BACKGROUND=/path/to/660x420.png ./Scripts/create-installer-dmg.sh`
+
+If `swift build` fails with a confusing `…release.exe` message on macOS, clear SwiftPM state and rebuild (e.g. `rm -rf .build` then run `build-app.sh` again). See `Scripts/build-app.sh` and `Scripts/create-installer-dmg.sh` for details.
+
 ## Tests
 
 Default unit-test pass (CLI; does **not** launch the separate UI-test project):
