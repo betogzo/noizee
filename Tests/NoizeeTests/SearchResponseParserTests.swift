@@ -65,6 +65,96 @@ struct SearchResponseParserTests {
         #expect(response.playlists.count == 1)
     }
 
+    @Test("Unified search parses direct sectionListRenderer without tabs")
+    func parseUnifiedSearchFlatEnvelope() {
+        let tabbedFixture = self.makeSearchResponseData(songs: 1, albums: 1, artists: 0, playlists: 0)
+        guard let tabbedContents = tabbedFixture["contents"] as? [String: Any],
+              let tabbedRenderer = tabbedContents["tabbedSearchResultsRenderer"] as? [String: Any],
+              let tabs = tabbedRenderer["tabs"] as? [[String: Any]],
+              let overviewTab = tabs.first,
+              let tabRendererNode = overviewTab["tabRenderer"] as? [String: Any],
+              let overviewContent = tabRendererNode["content"] as? [String: Any],
+              let sectionList = overviewContent["sectionListRenderer"] as? [String: Any]
+        else {
+            Issue.record("Fixture shape unexpected.")
+            return
+        }
+
+        let flatData: [String: Any] = [
+            "contents": [
+                "sectionListRenderer": sectionList,
+            ],
+        ]
+
+        let response = SearchResponseParser.parse(flatData)
+
+        #expect(response.songs.count == 1)
+        #expect(response.albums.count == 1)
+    }
+
+    @Test("Unified search parses singleColumnBrowseResultsRenderer tabs")
+    func parseUnifiedSearchSingleColumnEnvelope() {
+        let tabbedFixture = self.makeSearchResponseData(songs: 1, albums: 0, artists: 0, playlists: 0)
+        guard let tabbedContents = tabbedFixture["contents"] as? [String: Any],
+              let tabbedRenderer = tabbedContents["tabbedSearchResultsRenderer"] as? [String: Any],
+              let tabs = tabbedRenderer["tabs"] as? [[String: Any]]
+        else {
+            Issue.record("Fixture shape unexpected.")
+            return
+        }
+
+        let envelope: [String: Any] = [
+            "contents": [
+                "singleColumnBrowseResultsRenderer": [
+                    "tabs": tabs,
+                ],
+            ],
+        ]
+
+        let response = SearchResponseParser.parse(envelope)
+
+        #expect(response.songs.count == 1)
+    }
+
+    @Test("Unified search skips empty first tab")
+    func parseUnifiedSearchSkipsLeadingEmptyTabs() {
+        let emptyOverviewTab: [String: Any] = [
+            "tabRenderer": [
+                "selected": false,
+                "content": [
+                    "sectionListRenderer": [
+                        "contents": [] as [[String: Any]],
+                    ],
+                ],
+            ],
+        ]
+        let activeTabShelf: [[String: Any]] = [["musicShelfRenderer": ["contents": self.makeSongItems(count: 1)]]]
+
+        let data: [String: Any] = [
+            "contents": [
+                "tabbedSearchResultsRenderer": [
+                    "tabs": [
+                        emptyOverviewTab,
+                        [
+                            "tabRenderer": [
+                                "selected": true,
+                                "content": [
+                                    "sectionListRenderer": [
+                                        "contents": activeTabShelf,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+
+        let response = SearchResponseParser.parse(data)
+
+        #expect(response.songs.count == 1)
+    }
+
     @Test("Song has correct video ID")
     func songHasVideoId() {
         let data = self.makeSearchResponseData(songs: 1, albums: 0, artists: 0, playlists: 0)

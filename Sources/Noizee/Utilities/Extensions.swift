@@ -10,6 +10,17 @@ extension Collection {
     }
 }
 
+// MARK: - Bundle Extensions
+
+extension Bundle {
+    /// `true` when this bundle resolves to `Something.app` (a normal macOS app package).
+    ///
+    /// Builds launched with `swift run` use `Bundle.main` pointing at `.build/.../debug`; **User Notifications** rejects that layout.
+    var isMacApplicationPackage: Bool {
+        self.bundleURL.pathExtension.caseInsensitiveCompare("app") == .orderedSame
+    }
+}
+
 // MARK: - TimeInterval Extensions
 
 extension TimeInterval {

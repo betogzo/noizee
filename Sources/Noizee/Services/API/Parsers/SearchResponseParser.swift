@@ -12,17 +12,11 @@ enum SearchResponseParser {
         var artists: [Artist] = []
         var playlists: [Playlist] = []
 
-        // Navigate to contents
-        guard let contents = data["contents"] as? [String: Any],
-              let tabbedSearchResults = contents["tabbedSearchResultsRenderer"] as? [String: Any],
-              let tabs = tabbedSearchResults["tabs"] as? [[String: Any]],
-              let firstTab = tabs.first,
-              let tabRenderer = firstTab["tabRenderer"] as? [String: Any],
-              let tabContent = tabRenderer["content"] as? [String: Any],
-              let sectionListRenderer = tabContent["sectionListRenderer"] as? [String: Any],
-              let sectionContents = sectionListRenderer["contents"] as? [[String: Any]]
-        else {
+        guard let sectionContents = Self.preferredUnifiedSearchShelfSections(from: data), !sectionContents.isEmpty else {
             Self.logger.debug("SearchResponseParser: Failed to parse response structure. Top keys: \(data.keys.sorted())")
+            if let contents = data["contents"] as? [String: Any] {
+                Self.logger.debug("SearchResponseParser: contents keys: \(contents.keys.sorted())")
+            }
             return SearchResponse.empty
         }
 
@@ -54,6 +48,109 @@ enum SearchResponseParser {
         }
 
         return SearchResponse(songs: songs, albums: albums, artists: artists, playlists: playlists)
+    }
+
+    /// Shelves (`sectionListRenderer.contents`) used for unified (unfiltered) **All** search.
+    ///
+    /// YouTube Music has returned multiple envelopes:
+    /// - `contents.sectionListRenderer` directly (matching filtered endpoints)
+    /// - classic `contents.tabbedSearchResultsRenderer.tabs[...]` with one tab flagged `selected`
+    /// - newer `contents.singleColumnBrowseResultsRenderer.tabs[...]` (same tab shape as Home)
+    ///
+    /// We prefer the explicitly selected tab when it carries rows; otherwise the first tab with non-empty rows.
+    private static func preferredUnifiedSearchShelfSections(from data: [String: Any]) -> [[String: Any]]? {
+        guard let contents = data["contents"] as? [String: Any] else {
+            return nil
+        }
+
+        if let rows = Self.directSectionListRows(from: contents) {
+            return rows
+        }
+
+        for rendererKey in ["tabbedSearchResultsRenderer", "singleColumnBrowseResultsRenderer"] {
+            guard let nested = contents[rendererKey] as? [String: Any],
+                  let tabs = nested["tabs"] as? [[String: Any]]
+            else {
+                continue
+            }
+            if let rows = Self.preferredTabbedSectionListRows(tabs: tabs) {
+                return rows
+            }
+        }
+
+        return nil
+    }
+
+    private static func directSectionListRows(from contents: [String: Any]) -> [[String: Any]]? {
+        guard let renderer = contents["sectionListRenderer"] as? [String: Any],
+              let rows = renderer["contents"] as? [[String: Any]],
+              !rows.isEmpty
+        else {
+            return nil
+        }
+        return rows
+    }
+
+    /// Picks either the selected tab's `sectionListRenderer` or the first tab with usable rows (skips empty previews).
+    private static func preferredTabSectionListRenderer(tabs: [[String: Any]]) -> [String: Any]? {
+        var selectedRenderer: [String: Any]?
+        var firstRenderer: [String: Any]?
+
+        for tab in tabs {
+            guard let tabRenderer = tab["tabRenderer"] as? [String: Any],
+                  let tabContent = tabRenderer["content"] as? [String: Any],
+                  let sectionListRenderer = tabContent["sectionListRenderer"] as? [String: Any],
+                  let rows = sectionListRenderer["contents"] as? [[String: Any]],
+                  !rows.isEmpty
+            else {
+                continue
+            }
+
+            if firstRenderer == nil {
+                firstRenderer = sectionListRenderer
+            }
+
+            if Self.tabRendererIndicatesSelected(tabRenderer), selectedRenderer == nil {
+                selectedRenderer = sectionListRenderer
+            }
+        }
+
+        return selectedRenderer ?? firstRenderer
+    }
+
+    private static func preferredTabbedSectionListRows(tabs: [[String: Any]]) -> [[String: Any]]? {
+        guard let renderer = preferredTabSectionListRenderer(tabs: tabs) else {
+            return nil
+        }
+        return renderer["contents"] as? [[String: Any]]
+    }
+
+    private static func tabRendererIndicatesSelected(_ tabRenderer: [String: Any]) -> Bool {
+        if let explicit = tabRenderer["selected"] as? Bool ?? tabRenderer["isSelected"] as? Bool {
+            return explicit
+        }
+        if tabRenderer["checked"] as? Bool == true {
+            return true
+        }
+        if let checkStatus = tabRenderer["checkStatus"] as? String {
+            let normalized = checkStatus.uppercased()
+
+            if normalized.contains("UNCHECK")
+                || normalized.contains("UNSELECTED")
+                || normalized.contains("NOT_SELECTED")
+            {
+                return false
+            }
+
+            if normalized.contains("CHECKBOX_STATE_CHECKED")
+                || normalized.contains("CHECKED")
+                || normalized.contains("SELECTED")
+            {
+                return true
+            }
+        }
+
+        return tabRenderer["toggled"] as? Bool ?? false
     }
 
     /// Helper to append a search result item to the appropriate array.
@@ -272,25 +369,44 @@ enum SearchResponseParser {
 
     /// Helper to get sectionListRenderer from filtered search response.
     private static func getSectionListRenderer(from data: [String: Any]) -> [String: Any]? {
-        // Try filtered search structure first (no tabs)
-        if let contents = data["contents"] as? [String: Any],
-           let sectionListRenderer = contents["sectionListRenderer"] as? [String: Any]
-        {
+        guard let contents = data["contents"] as? [String: Any] else {
+            return nil
+        }
+
+        // Filtered/top-level payloads — keep legacy behavior (continuation tokens may accompany empty shelves).
+        if let sectionListRenderer = contents["sectionListRenderer"] as? [String: Any] {
             return sectionListRenderer
         }
 
-        // Try tabbed structure as fallback
-        if let contents = data["contents"] as? [String: Any],
-           let tabbedSearchResults = contents["tabbedSearchResultsRenderer"] as? [String: Any],
-           let tabs = tabbedSearchResults["tabs"] as? [[String: Any]],
-           let firstTab = tabs.first,
-           let tabRenderer = firstTab["tabRenderer"] as? [String: Any],
-           let tabContent = tabRenderer["content"] as? [String: Any],
-           let sectionListRenderer = tabContent["sectionListRenderer"] as? [String: Any]
-        {
-            return sectionListRenderer
+        for rendererKey in ["tabbedSearchResultsRenderer", "singleColumnBrowseResultsRenderer"] {
+            guard let nested = contents[rendererKey] as? [String: Any],
+                  let tabs = nested["tabs"] as? [[String: Any]],
+                  !tabs.isEmpty else { continue }
+
+            // Prefer usable rows (fixes empty introductory tabs during unified-style envelopes).
+            if let preferredRenderer = Self.preferredTabSectionListRenderer(tabs: tabs) {
+                return preferredRenderer
+            }
+
+            if let permissiveRenderer = Self.permissiveFirstTabSectionListRenderer(tabs: tabs) {
+                return permissiveRenderer
+            }
         }
 
+        return nil
+    }
+
+    /// First tab exposing a section list renderer, ignoring whether shelf rows exist (continuation fallback).
+    private static func permissiveFirstTabSectionListRenderer(tabs: [[String: Any]]) -> [String: Any]? {
+        for tab in tabs {
+            guard let tabRenderer = tab["tabRenderer"] as? [String: Any],
+                  let tabContent = tabRenderer["content"] as? [String: Any],
+                  let sectionListRenderer = tabContent["sectionListRenderer"] as? [String: Any]
+            else {
+                continue
+            }
+            return sectionListRenderer
+        }
         return nil
     }
 

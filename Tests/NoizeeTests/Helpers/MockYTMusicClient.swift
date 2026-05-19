@@ -144,6 +144,7 @@ final class MockYTMusicClient: YTMusicClientProtocol { // swiftlint:disable:this
     private(set) var getExploreContinuationCallCount = 0
     private(set) var searchCalled = false
     private(set) var searchQueries: [String] = []
+    private(set) var searchAggregateOverviewCallCount = 0
     private(set) var getSearchSuggestionsCalled = false
     private(set) var getSearchSuggestionsQueries: [String] = []
     private(set) var getLibraryContentCalled = false
@@ -353,6 +354,51 @@ final class MockYTMusicClient: YTMusicClientProtocol { // swiftlint:disable:this
         return self.searchResponse
     }
 
+    func searchAggregateOverview(query: String) async throws -> SearchResponse {
+        self.searchCalled = true
+        self.searchQueries.append(query)
+        self.searchAggregateOverviewCallCount += 1
+        self._searchContinuationIndex = 0
+        if let error = shouldThrowError { throw error }
+
+        let mergedPlaylists = Self.mergeDedupedPlaylistSlices(
+            featured: self.searchResponse.playlists,
+            community: self.searchResponse.playlists
+        )
+
+        return SearchResponse(
+            songs: self.searchResponse.songs,
+            albums: self.searchResponse.albums,
+            artists: self.searchResponse.artists,
+            playlists: mergedPlaylists,
+            podcastShows: self.searchResponse.podcastShows,
+            continuationToken: nil
+        )
+    }
+
+    private static func mergeDedupedPlaylistSlices(featured: [Playlist], community: [Playlist]) -> [Playlist] {
+        var merged: [Playlist] = []
+        var seenKeys = Set<String>()
+
+        func appendKeepingOrder(_ playlists: [Playlist]) {
+            for playlist in playlists {
+                let dedupeKey: String = if playlist.id.hasPrefix("VL") {
+                    String(playlist.id.dropFirst(2))
+                } else {
+                    playlist.id
+                }
+
+                if seenKeys.insert(dedupeKey).inserted {
+                    merged.append(playlist)
+                }
+            }
+        }
+
+        appendKeepingOrder(featured)
+        appendKeepingOrder(community)
+        return merged
+    }
+
     func searchSongs(query: String) async throws -> [Song] {
         self.searchCalled = true
         self.searchQueries.append(query)
@@ -492,6 +538,7 @@ final class MockYTMusicClient: YTMusicClientProtocol { // swiftlint:disable:this
         self._podcastsContinuationIndex = 0
         self._likedSongsContinuationIndex = 0
         self._searchContinuationIndex = 0
+        self.searchAggregateOverviewCallCount = 0
     }
 
     func getSearchSuggestions(query: String) async throws -> [SearchSuggestion] {

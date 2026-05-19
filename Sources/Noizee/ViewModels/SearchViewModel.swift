@@ -282,13 +282,10 @@ final class SearchViewModel {
         self.logger.info("Searching for: \(currentQuery) with filter: \(currentFilter.rawValue)")
 
         do {
-            let searchResults: SearchResponse
-
-                // Use filtered search for specific filters to get more results
-                = switch currentFilter
-            {
+            // `.all`: merge filtered tabs instead of brittle unscoped search payloads (see `searchAggregateOverview`).
+            let searchResults: SearchResponse = switch currentFilter {
             case .all:
-                try await self.client.search(query: currentQuery)
+                try await self.client.searchAggregateOverview(query: currentQuery)
             case .songs:
                 try await self.client.searchSongsWithPagination(query: currentQuery)
             case .albums:

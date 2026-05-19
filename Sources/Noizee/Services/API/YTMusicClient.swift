@@ -340,6 +340,104 @@ final class YTMusicClient: YTMusicClientProtocol {
         return response
     }
 
+    /// Runs the same filtered searches as Songs/Albums/Artists/Playlists/Podcasts and merges first-page rows (used for **All**).
+    /// More reliable than the unscoped `/search` overview payload, whose shape changes across clients.
+    func searchAggregateOverview(query: String) async throws -> SearchResponse {
+        self.clearSearchContinuation()
+
+        self.logger.info("Aggregated All search for: \(query)")
+
+        let rSongs = try await self.aggregatedSearchSlice(label: "songs") {
+            try await self.searchSongsWithPagination(query: query)
+        }
+        let rAlbums = try await self.aggregatedSearchSlice(label: "albums") {
+            try await self.searchAlbums(query: query)
+        }
+        let rArtists = try await self.aggregatedSearchSlice(label: "artists") {
+            try await self.searchArtists(query: query)
+        }
+        let rFeatured = try await self.aggregatedSearchSlice(label: "featured playlists") {
+            try await self.searchFeaturedPlaylists(query: query)
+        }
+        let rCommunity = try await self.aggregatedSearchSlice(label: "community playlists") {
+            try await self.searchCommunityPlaylists(query: query)
+        }
+        let rPodcasts = try await self.aggregatedSearchSlice(label: "podcasts") {
+            try await self.searchPodcasts(query: query)
+        }
+
+        self.searchContinuationToken = nil
+
+        let mergedPlaylists = Self.mergePlaylistSlicesPreservingFeaturedFirst(
+            featured: rFeatured.playlists,
+            community: rCommunity.playlists
+        )
+
+        let merged = SearchResponse(
+            songs: rSongs.songs,
+            albums: rAlbums.albums,
+            artists: rArtists.artists,
+            playlists: mergedPlaylists,
+            podcastShows: rPodcasts.podcastShows,
+            continuationToken: nil
+        )
+
+        self.logger.info(
+            "Aggregated All complete: \(merged.songs.count) songs, \(merged.albums.count) albums, \(merged.artists.count) artists, \(merged.playlists.count) playlists, \(merged.podcastShows.count) podcasts"
+        )
+        return merged
+    }
+
+    /// Fetches ``SearchResponse`` for one aggregated slice; swallows transient failures unless task is cancelled or auth is invalid.
+    private func aggregatedSearchSlice(
+        label: String,
+        fetch: () async throws -> SearchResponse
+    ) async throws -> SearchResponse {
+        do {
+            return try await fetch()
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as YTMusicError where error.requiresReauth {
+            throw error
+        } catch {
+            self.logger.warning("Aggregated '\(label)' slice failed (continuing): \(error.localizedDescription)")
+            return SearchResponse(
+                songs: [],
+                albums: [],
+                artists: [],
+                playlists: [],
+                podcastShows: [],
+                continuationToken: nil
+            )
+        }
+    }
+
+    nonisolated private static func mergePlaylistSlicesPreservingFeaturedFirst(featured: [Playlist], community: [Playlist]) -> [Playlist] {
+        var merged: [Playlist] = []
+        var seenKeys = Set<String>()
+
+        func appendKeepingOrder(_ playlists: [Playlist]) {
+            for playlist in playlists {
+                let dedupeKey = Self.playlistSearchDedupeKey(playlist.id)
+                if seenKeys.insert(dedupeKey).inserted {
+                    merged.append(playlist)
+                }
+            }
+        }
+
+        appendKeepingOrder(featured)
+        appendKeepingOrder(community)
+        return merged
+    }
+
+    nonisolated private static func playlistSearchDedupeKey(_ rawId: String) -> String {
+        if rawId.hasPrefix("VL") {
+            String(rawId.dropFirst(2))
+        } else {
+            rawId
+        }
+    }
+
     /// Searches for songs only (filtered search).
     func searchSongs(query: String) async throws -> [Song] {
         self.logger.info("Searching songs only for: \(query)")

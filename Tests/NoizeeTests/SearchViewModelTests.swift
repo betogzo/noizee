@@ -151,4 +151,25 @@ struct SearchViewModelTests {
         #expect(self.viewModel.filteredItems.isEmpty)
         #expect(self.viewModel.shouldShowFilters)
     }
+
+    @Test("All tab loads merged aggregate overview")
+    func allTabLoadsAggregateOverview() async throws {
+        self.mockClient.searchResponse = TestFixtures.makeSearchResponse(
+            songCount: 2,
+            albumCount: 1,
+            artistCount: 1,
+            playlistCount: 2
+        )
+
+        self.viewModel.query = "daft punk"
+        self.viewModel.selectedFilter = .all
+        self.viewModel.searchImmediately()
+
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(self.mockClient.searchAggregateOverviewCallCount == 1)
+        #expect(self.viewModel.loadingState == .loaded)
+        // Featured + community slices use the same mock IDs; merging should de-duplicate playlists.
+        #expect(self.viewModel.filteredItems.count == 6)
+    }
 }

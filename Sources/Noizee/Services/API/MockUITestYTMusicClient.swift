@@ -141,6 +141,45 @@ final class MockUITestYTMusicClient: YTMusicClientProtocol {
         return self.searchResults
     }
 
+    func searchAggregateOverview(query _: String) async throws -> SearchResponse {
+        try? await Task.sleep(for: .milliseconds(100))
+        let mergedPlaylists = Self.mergeDedupedPlaylistSlices(
+            featured: self.searchResults.playlists,
+            community: self.searchResults.playlists
+        )
+        return SearchResponse(
+            songs: self.searchResults.songs,
+            albums: self.searchResults.albums,
+            artists: self.searchResults.artists,
+            playlists: mergedPlaylists,
+            podcastShows: self.searchResults.podcastShows,
+            continuationToken: nil
+        )
+    }
+
+    private static func mergeDedupedPlaylistSlices(featured: [Playlist], community: [Playlist]) -> [Playlist] {
+        var merged: [Playlist] = []
+        var seenKeys = Set<String>()
+
+        func appendKeepingOrder(_ playlists: [Playlist]) {
+            for playlist in playlists {
+                let dedupeKey: String = if playlist.id.hasPrefix("VL") {
+                    String(playlist.id.dropFirst(2))
+                } else {
+                    playlist.id
+                }
+
+                if seenKeys.insert(dedupeKey).inserted {
+                    merged.append(playlist)
+                }
+            }
+        }
+
+        appendKeepingOrder(featured)
+        appendKeepingOrder(community)
+        return merged
+    }
+
     func searchSongs(query _: String) async throws -> [Song] {
         try? await Task.sleep(for: .milliseconds(100))
         return self.searchResults.songs

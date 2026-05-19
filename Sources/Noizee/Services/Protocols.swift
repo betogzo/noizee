@@ -112,6 +112,9 @@ protocol YTMusicClientProtocol: Sendable {
     /// Searches for content.
     func search(query: String) async throws -> SearchResponse
 
+    /// Merges filtered search payloads (same as category tabs). Used by **All** for reliable layouts.
+    func searchAggregateOverview(query: String) async throws -> SearchResponse
+
     /// Searches for songs only (filtered search, excludes videos/podcasts/episodes).
     func searchSongs(query: String) async throws -> [Song]
 

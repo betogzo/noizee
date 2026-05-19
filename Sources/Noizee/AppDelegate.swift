@@ -28,7 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ApplicationPresentationSync.syncDockTileAndLaunchServicesRegistration()
         // Set up notification center delegate to show notifications in foreground
         if !UITestConfig.isRunningUnitTests {
-            UNUserNotificationCenter.current().delegate = self
+            if Bundle.main.isMacApplicationPackage {
+                UNUserNotificationCenter.current().delegate = self
+            } else {
+                DiagnosticsLogger.app.debug(
+                    "Skipping notification delegate outside .app bundle (e.g. `swift run`); foreground banners require Xcode or packaged .app."
+                )
+            }
         }
 
         // In UI test mode, activate the app to bring window to foreground
