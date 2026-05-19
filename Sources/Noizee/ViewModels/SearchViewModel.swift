@@ -203,7 +203,7 @@ final class SearchViewModel {
         self.suggestions = []
         self.suppressedSuggestionsQuery = suggestion.query
         self.query = suggestion.query
-        self.search()
+        self.searchImmediately()
     }
 
     /// Clears suggestions without affecting search.

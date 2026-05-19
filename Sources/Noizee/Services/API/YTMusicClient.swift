@@ -347,24 +347,29 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         self.logger.info("Aggregated All search for: \(query)")
 
-        let rSongs = try await self.aggregatedSearchSlice(label: "songs") {
-            try await self.searchSongsWithPagination(query: query)
+        // Run filtered-tab fetches concurrently: sequential latency summed ~6× one round-trip.
+        async let songsSlice = self.aggregatedSearchSlice(label: "songs") {
+            try await self.searchSongsWithPagination(query: query, storeContinuationToken: false)
         }
-        let rAlbums = try await self.aggregatedSearchSlice(label: "albums") {
-            try await self.searchAlbums(query: query)
+        async let albumsSlice = self.aggregatedSearchSlice(label: "albums") {
+            try await self.searchAlbums(query: query, storeContinuationToken: false)
         }
-        let rArtists = try await self.aggregatedSearchSlice(label: "artists") {
-            try await self.searchArtists(query: query)
+        async let artistsSlice = self.aggregatedSearchSlice(label: "artists") {
+            try await self.searchArtists(query: query, storeContinuationToken: false)
         }
-        let rFeatured = try await self.aggregatedSearchSlice(label: "featured playlists") {
-            try await self.searchFeaturedPlaylists(query: query)
+        async let featuredPlaylistsSlice = self.aggregatedSearchSlice(label: "featured playlists") {
+            try await self.searchFeaturedPlaylists(query: query, storeContinuationToken: false)
         }
-        let rCommunity = try await self.aggregatedSearchSlice(label: "community playlists") {
-            try await self.searchCommunityPlaylists(query: query)
+        async let communityPlaylistsSlice = self.aggregatedSearchSlice(label: "community playlists") {
+            try await self.searchCommunityPlaylists(query: query, storeContinuationToken: false)
         }
-        let rPodcasts = try await self.aggregatedSearchSlice(label: "podcasts") {
-            try await self.searchPodcasts(query: query)
+        async let podcastsSlice = self.aggregatedSearchSlice(label: "podcasts") {
+            try await self.searchPodcasts(query: query, storeContinuationToken: false)
         }
+
+        let (rSongs, rAlbums, rArtists, rFeatured, rCommunity, rPodcasts) = try await (
+            songsSlice, albumsSlice, artistsSlice, featuredPlaylistsSlice, communityPlaylistsSlice, podcastsSlice
+        )
 
         self.searchContinuationToken = nil
 
@@ -412,7 +417,7 @@ final class YTMusicClient: YTMusicClientProtocol {
         }
     }
 
-    nonisolated private static func mergePlaylistSlicesPreservingFeaturedFirst(featured: [Playlist], community: [Playlist]) -> [Playlist] {
+    private nonisolated static func mergePlaylistSlicesPreservingFeaturedFirst(featured: [Playlist], community: [Playlist]) -> [Playlist] {
         var merged: [Playlist] = []
         var seenKeys = Set<String>()
 
@@ -430,7 +435,7 @@ final class YTMusicClient: YTMusicClientProtocol {
         return merged
     }
 
-    nonisolated private static func playlistSearchDedupeKey(_ rawId: String) -> String {
+    private nonisolated static func playlistSearchDedupeKey(_ rawId: String) -> String {
         if rawId.hasPrefix("VL") {
             String(rawId.dropFirst(2))
         } else {
@@ -484,6 +489,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for albums only (filtered search with pagination).
     func searchAlbums(query: String) async throws -> SearchResponse {
+        try await self.searchAlbums(query: query, storeContinuationToken: true)
+    }
+
+    private func searchAlbums(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching albums only for: \(query)")
 
         let body: [String: Any] = [
@@ -493,7 +502,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (albums, token) = SearchResponseParser.parseAlbumsOnly(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Albums search found \(albums.count) albums, hasMore: \(token != nil)")
         return SearchResponse(songs: [], albums: albums, artists: [], playlists: [], continuationToken: token)
@@ -501,6 +512,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for artists only (filtered search with pagination).
     func searchArtists(query: String) async throws -> SearchResponse {
+        try await self.searchArtists(query: query, storeContinuationToken: true)
+    }
+
+    private func searchArtists(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching artists only for: \(query)")
 
         let body: [String: Any] = [
@@ -510,7 +525,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (artists, token) = SearchResponseParser.parseArtistsOnly(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Artists search found \(artists.count) artists, hasMore: \(token != nil)")
         return SearchResponse(songs: [], albums: [], artists: artists, playlists: [], continuationToken: token)
@@ -535,6 +552,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for featured playlists only (YouTube Music curated playlists).
     func searchFeaturedPlaylists(query: String) async throws -> SearchResponse {
+        try await self.searchFeaturedPlaylists(query: query, storeContinuationToken: true)
+    }
+
+    private func searchFeaturedPlaylists(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching featured playlists only for: \(query)")
 
         let body: [String: Any] = [
@@ -544,7 +565,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (playlists, token) = SearchResponseParser.parsePlaylistsOnly(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Featured playlists search found \(playlists.count) playlists, hasMore: \(token != nil)")
         return SearchResponse(songs: [], albums: [], artists: [], playlists: playlists, continuationToken: token)
@@ -552,6 +575,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for community playlists only (user-created playlists).
     func searchCommunityPlaylists(query: String) async throws -> SearchResponse {
+        try await self.searchCommunityPlaylists(query: query, storeContinuationToken: true)
+    }
+
+    private func searchCommunityPlaylists(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching community playlists only for: \(query)")
 
         let body: [String: Any] = [
@@ -561,7 +588,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (playlists, token) = SearchResponseParser.parsePlaylistsOnly(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Community playlists search found \(playlists.count) playlists, hasMore: \(token != nil)")
         return SearchResponse(songs: [], albums: [], artists: [], playlists: playlists, continuationToken: token)
@@ -569,6 +598,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for podcasts only (podcast shows).
     func searchPodcasts(query: String) async throws -> SearchResponse {
+        try await self.searchPodcasts(query: query, storeContinuationToken: true)
+    }
+
+    private func searchPodcasts(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching podcasts only for: \(query)")
 
         let body: [String: Any] = [
@@ -578,7 +611,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (podcastShows, token) = SearchResponseParser.parsePodcastsOnly(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Podcasts search found \(podcastShows.count) shows, hasMore: \(token != nil)")
         return SearchResponse(
@@ -593,6 +628,10 @@ final class YTMusicClient: YTMusicClientProtocol {
 
     /// Searches for songs only with pagination support.
     func searchSongsWithPagination(query: String) async throws -> SearchResponse {
+        try await self.searchSongsWithPagination(query: query, storeContinuationToken: true)
+    }
+
+    private func searchSongsWithPagination(query: String, storeContinuationToken: Bool) async throws -> SearchResponse {
         self.logger.info("Searching songs with pagination for: \(query)")
 
         let body: [String: Any] = [
@@ -602,7 +641,9 @@ final class YTMusicClient: YTMusicClientProtocol {
 
         let data = try await request("search", body: body, ttl: APICache.TTL.search)
         let (songs, token) = SearchResponseParser.parseSongsWithContinuation(data)
-        self.searchContinuationToken = token
+        if storeContinuationToken {
+            self.searchContinuationToken = token
+        }
 
         self.logger.info("Songs search found \(songs.count) songs, hasMore: \(token != nil)")
         return SearchResponse(songs: songs, albums: [], artists: [], playlists: [], continuationToken: token)

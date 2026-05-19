@@ -104,7 +104,7 @@ struct SearchView: View {
                     {
                         self.viewModel.selectSuggestion(self.viewModel.suggestions[self.selectedSuggestionIndex])
                     } else {
-                        self.viewModel.search()
+                        self.viewModel.searchImmediately()
                     }
                 }
                 .onKeyPress(.downArrow) {
@@ -228,7 +228,7 @@ struct SearchView: View {
                 title: String(localized: "No Connection"),
                 message: String(localized: "Please check your internet connection and try again.")
             ) {
-                self.viewModel.search()
+                self.viewModel.searchImmediately()
             }
         } else {
             switch self.viewModel.loadingState {
@@ -244,7 +244,7 @@ struct SearchView: View {
                 }
             case let .error(error):
                 ErrorView(error: error) {
-                    self.viewModel.search()
+                    self.viewModel.searchImmediately()
                 }
             }
         }
