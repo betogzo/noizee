@@ -2,6 +2,8 @@
 
 Private macOS app — native Swift/SwiftUI front end for YouTube Music (API via `YTMusicClient`, DRM playback in a hidden WebView). This README is for you and anyone with repo access: clone, build, run, and where to read more.
 
+This app is a direct fork from https://github.com/sozercan/kaset with enhanced features.
+
 ## Requirements
 
 - **macOS 26** (matches `Package.swift`)
