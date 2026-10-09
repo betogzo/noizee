@@ -88,17 +88,12 @@ struct PlayerBar: View {
             }
         }
         .onChange(of: self.playerService.progress) { _, newValue in
-            // Sync local seek value when not actively seeking
-            if !self.isSeeking, self.playerService.duration > 0 {
-                self.seekValue = newValue / self.playerService.duration
-            }
-            // Only update formatted strings when the second changes to reduce Text view updates
-            let currentSecond = Int(newValue)
-            if currentSecond != self.lastProgressSecond {
-                self.lastProgressSecond = currentSecond
-                self.formattedProgress = self.formatTime(newValue)
-                self.formattedRemaining = "-\(self.formatTime(self.playerService.duration - newValue))"
-            }
+            self.syncSeekState(progress: newValue, forceLabels: false)
+        }
+        .onChange(of: self.playerService.duration) { _, _ in
+            // A new track briefly reports zero duration while it loads; resync so the
+            // slider never keeps the previous track's fraction.
+            self.syncSeekState(progress: self.playerService.progress, forceLabels: true)
         }
         .onChange(of: self.playerService.volume) { _, newValue in
             // Sync local volume value when not actively adjusting
@@ -321,6 +316,22 @@ struct PlayerBar: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 45, alignment: .leading)
                 .monospacedDigit()
+        }
+    }
+
+    /// Syncs the slider position and cached time labels with the player's progress.
+    private func syncSeekState(progress: TimeInterval, forceLabels: Bool) {
+        // Sync local seek value when not actively seeking
+        if !self.isSeeking {
+            let duration = self.playerService.duration
+            self.seekValue = duration > 0 ? min(max(progress / duration, 0), 1) : 0
+        }
+        // Only update formatted strings when the second changes to reduce Text view updates
+        let currentSecond = Int(progress)
+        if forceLabels || currentSecond != self.lastProgressSecond {
+            self.lastProgressSecond = currentSecond
+            self.formattedProgress = self.formatTime(progress)
+            self.formattedRemaining = "-\(self.formatTime(self.playerService.duration - progress))"
         }
     }
 
