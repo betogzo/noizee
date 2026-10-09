@@ -9,7 +9,7 @@ extension SingletonPlayerWebView {
 
         let script = """
             (function() {
-                const playBtn = document.querySelector('.play-pause-button.ytmusic-player-bar');
+                const playBtn = document.querySelector('\(Self.playPauseButtonSelector)');
                 if (playBtn) { playBtn.click(); return 'clicked'; }
                 const video = document.querySelector('video');
                 if (video) {
@@ -60,8 +60,11 @@ extension SingletonPlayerWebView {
 
         let script = """
             (function() {
-                const nextBtn = document.querySelector('.next-button.ytmusic-player-bar');
+                const nextBtn = document.querySelector('\(Self.nextButtonSelector)');
                 if (nextBtn) { nextBtn.click(); return 'clicked'; }
+                const player = document.querySelector('ytmusic-player');
+                const api = (player && player.playerApi) || document.getElementById('movie_player');
+                if (api && typeof api.nextVideo === 'function') { api.nextVideo(); return 'api'; }
                 return 'no-button';
             })();
         """
@@ -78,8 +81,11 @@ extension SingletonPlayerWebView {
 
         let script = """
             (function() {
-                const prevBtn = document.querySelector('.previous-button.ytmusic-player-bar');
+                const prevBtn = document.querySelector('\(Self.previousButtonSelector)');
                 if (prevBtn) { prevBtn.click(); return 'clicked'; }
+                const player = document.querySelector('ytmusic-player');
+                const api = (player && player.playerApi) || document.getElementById('movie_player');
+                if (api && typeof api.previousVideo === 'function') { api.previousVideo(); return 'api'; }
                 return 'no-button';
             })();
         """

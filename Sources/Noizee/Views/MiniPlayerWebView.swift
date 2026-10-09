@@ -83,9 +83,19 @@ struct MiniPlayerWebView: NSViewRepresentable {
                 console.log('[MiniPlayer] ' + msg);
             }
 
+            \(SingletonPlayerWebView.playerStateHelpersJS)
+
+            function start() {
+                // Periodic updates must not depend on `ytmusic-player-bar`, which YouTube
+                // Music's new `ytmusic-miniplayer` replaces.
+                sendUpdate();
+                setInterval(sendUpdate, 1000);
+                waitForPlayerBar();
+            }
+
             // Wait for the player bar to appear and observe it
             function waitForPlayerBar() {
-                const playerBar = document.querySelector('ytmusic-player-bar');
+                const playerBar = __noizeeFindPlayerBar(document);
                 if (playerBar) {
                     log('Player bar found, setting up observer');
                     setupObserver(playerBar);
@@ -110,26 +120,37 @@ struct MiniPlayerWebView: NSViewRepresentable {
 
                 // Send initial update
                 sendUpdate();
+            }
 
-                // Also send periodic updates
-                setInterval(sendUpdate, 1000);
+            function currentPlayerData() {
+                const player = document.querySelector('ytmusic-player');
+                const api = (player && player.playerApi) || document.getElementById('movie_player');
+                if (api && typeof api.getVideoData === 'function') {
+                    const data = api.getVideoData();
+                    if (data && typeof data === 'object') return data;
+                }
+                return null;
             }
 
             function sendUpdate() {
                 try {
                     const titleEl = document.querySelector('.ytmusic-player-bar.title');
                     const artistEl = document.querySelector('.ytmusic-player-bar.byline');
-                    const progressBar = document.querySelector('#progress-bar');
+                    const progressBar = document.querySelector('ytmusic-player-bar #progress-bar');
+                    const playerData = currentPlayerData();
 
-                    const title = titleEl ? titleEl.textContent : '';
-                    const artist = artistEl ? artistEl.textContent : '';
-                    const progress = progressBar ? parseInt(progressBar.getAttribute('value') || '0') : 0;
-                    const duration = progressBar ? parseInt(progressBar.getAttribute('aria-valuemax') || '0') : 0;
+                    let title = titleEl ? titleEl.textContent : '';
+                    let artist = artistEl ? artistEl.textContent : '';
+                    if (!title && playerData && typeof playerData.title === 'string') title = playerData.title;
+                    if (!artist && playerData && typeof playerData.author === 'string') artist = playerData.author;
 
                     // Use video element's paused property for language-agnostic detection
                     // Previously checked button title/aria-label which fails for non-English locales
                     const video = document.querySelector('video');
                     const isPlaying = video ? !video.paused : false;
+                    const timing = __noizeeReadProgress(video, progressBar);
+                    const progress = timing.progress;
+                    const duration = timing.duration;
 
                     bridge.postMessage({
                         type: 'STATE_UPDATE',
@@ -146,9 +167,9 @@ struct MiniPlayerWebView: NSViewRepresentable {
 
             // Start waiting
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', waitForPlayerBar);
+                document.addEventListener('DOMContentLoaded', start);
             } else {
-                waitForPlayerBar();
+                start();
             }
         })();
         """
@@ -524,18 +545,10 @@ final class SingletonPlayerWebView {
             let artist = body["artist"] as? String ?? ""
             let thumbnailUrl = body["thumbnailUrl"] as? String ?? ""
             let trackChanged = body["trackChanged"] as? Bool ?? false
-            let likeStatusString = body["likeStatus"] as? String ?? "INDIFFERENT"
             let hasVideo = body["hasVideo"] as? Bool ?? false
 
-            // Parse like status
-            let likeStatus: LikeStatus = switch likeStatusString {
-            case "LIKE":
-                .like
-            case "DISLIKE":
-                .dislike
-            default:
-                .indifferent
-            }
+            // Absent when the page has no like renderer (e.g. YouTube Music's new miniplayer).
+            let likeStatus = Self.parseLikeStatus(body["likeStatus"] as? String)
 
             Task { @MainActor in
                 self.playerService.updatePlaybackState(
@@ -548,7 +561,7 @@ final class SingletonPlayerWebView {
                 self.playerService.updateVideoAvailability(hasVideo: hasVideo)
 
                 // Update like status only when track changes (initial state)
-                if trackChanged {
+                if trackChanged, let likeStatus {
                     self.playerService.updateLikeStatus(likeStatus)
                 }
 
@@ -577,6 +590,20 @@ final class SingletonPlayerWebView {
                         self.playerService.showVideo = false
                     }
                 }
+            }
+        }
+
+        /// Maps the observer's like status; `nil` when the page reported none.
+        private static func parseLikeStatus(_ value: String?) -> LikeStatus? {
+            switch value {
+            case nil:
+                nil
+            case "LIKE":
+                .like
+            case "DISLIKE":
+                .dislike
+            default:
+                .indifferent
             }
         }
 

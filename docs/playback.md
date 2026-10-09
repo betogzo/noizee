@@ -195,7 +195,21 @@ func applicationShouldHandleReopen(_:, hasVisibleWindows:) -> Bool {
 ### Observer Script
 
 Injected into every watch page. The real script is more defensive than the
-minimal version below:
+minimal version below.
+
+> **Player bar independence:** YouTube Music is rolling out a new player UI
+> (experiment flag `music_web_enable_wiz_miniplayer`) that renders
+> `ytmusic-miniplayer` instead of `ytmusic-player-bar`. The observer must never
+> gate its `<video>` listeners on a specific player bar. It attaches them
+> immediately, reads `progress`/`duration` from the `<video>` element (the
+> legacy `#progress-bar` slider is only a fallback), takes title/artist from
+> `playerApi.getVideoData()` when the DOM has none, falls back to Media Session
+> artwork for the thumbnail, and sends `likeStatus: null` when no like renderer
+> is mounted. Control selectors (`playPauseButtonSelector`,
+> `nextButtonSelector`, `previousButtonSelector`) cover both UIs, and next/prev
+> fall back to the player API. The shared helpers live in
+> `SingletonPlayerWebView.playerStateHelpersJS` and are unit-tested in a
+> `JSContext`.
 
 ```javascript
 (function() {
@@ -220,7 +234,7 @@ minimal version below:
 
     function sendUpdate() {
         const video = document.querySelector('video');
-        const progressBar = document.querySelector('#progress-bar');
+        const timing = __noizeeReadProgress(video, legacyProgressBar);
         const title = /* DOM title, or player API title if DOM is stale */;
         const artist = /* DOM artist, or player API artist if DOM is stale */;
         const videoId = currentVideoId();
@@ -241,8 +255,8 @@ minimal version below:
         bridge.postMessage({
             type: 'STATE_UPDATE',
             isPlaying: video ? !video.paused : false,
-            progress: parseInt(progressBar?.getAttribute('value') || '0'),
-            duration: parseInt(progressBar?.getAttribute('aria-valuemax') || '0'),
+            progress: timing.progress,   // Math.floor(video.currentTime)
+            duration: timing.duration,   // Math.floor(video.duration)
             title: title,
             artist: artist,
             videoId: videoId,

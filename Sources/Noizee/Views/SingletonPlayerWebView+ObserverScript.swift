@@ -16,6 +16,58 @@ extension SingletonPlayerWebView {
         """
     }
 
+    /// DOM selectors for player-bar controls. YouTube Music is rolling out a new
+    /// `ytmusic-miniplayer` (experiment `music_web_enable_wiz_miniplayer`) that replaces
+    /// `ytmusic-player-bar`, so each list covers both the legacy and the new markup.
+    nonisolated static let playPauseButtonSelector =
+        ".play-pause-button.ytmusic-player-bar, .ytmusicPlayerControlsPlayPauseButton button"
+    nonisolated static let nextButtonSelector =
+        ".next-button.ytmusic-player-bar, .ytmusicPlayerControlsNextButton button"
+    nonisolated static let previousButtonSelector =
+        ".previous-button.ytmusic-player-bar, .ytmusicPlayerControlsPreviousButton button"
+
+    /// Pure JS helpers that read player state without depending on a specific
+    /// player-bar implementation. Exposed so unit tests can run them in a `JSContext`.
+    nonisolated static var playerStateHelpersJS: String {
+        """
+        function __noizeeFindPlayerBar(doc) {
+            return doc.querySelector('ytmusic-player-bar') || doc.querySelector('ytmusic-miniplayer');
+        }
+
+        function __noizeeReadProgress(video, progressBar) {
+            if (video && isFinite(video.duration) && video.duration > 0) {
+                const time = isFinite(video.currentTime) ? video.currentTime : 0;
+                return { progress: Math.floor(time), duration: Math.floor(video.duration) };
+            }
+            if (progressBar) {
+                return {
+                    progress: parseInt(progressBar.getAttribute('value') || '0') || 0,
+                    duration: parseInt(progressBar.getAttribute('aria-valuemax') || '0') || 0
+                };
+            }
+            return { progress: 0, duration: 0 };
+        }
+
+        function __noizeeMediaSessionArtwork(mediaSession, title) {
+            const metadata = mediaSession && mediaSession.metadata;
+            if (!metadata || !metadata.artwork || !metadata.artwork.length) return '';
+            // Metadata can lag behind a track change; never pair a new title with old artwork.
+            if (title && metadata.title && metadata.title !== title) return '';
+            let best = null;
+            let bestWidth = -1;
+            for (const art of metadata.artwork) {
+                if (!art || !art.src) continue;
+                const width = parseInt(String(art.sizes || '').split('x')[0]) || 0;
+                if (width > bestWidth) {
+                    best = art;
+                    bestWidth = width;
+                }
+            }
+            return best ? best.src : '';
+        }
+        """
+    }
+
     /// Observer script for playback state.
     nonisolated static var observerScript: String {
         """
@@ -23,6 +75,7 @@ extension SingletonPlayerWebView {
             'use strict';
             const bridge = window.webkit.messageHandlers.singletonPlayer;
             \(autoplayRecoveryFunctionJS)
+            \(playerStateHelpersJS)
             let lastTitle = '';
             let lastArtist = '';
             let lastVideoId = '';
@@ -53,11 +106,18 @@ extension SingletonPlayerWebView {
                 setTimeout(() => { isEnforcingVolume = false; }, 50);
             }
 
+            function start() {
+                // Video listeners must not wait for a specific player bar: YouTube Music
+                // can render `ytmusic-miniplayer` instead of `ytmusic-player-bar`.
+                setupVideoListeners();
+                waitForPlayerBar();
+                sendUpdate();
+            }
+
             function waitForPlayerBar() {
-                const playerBar = document.querySelector('ytmusic-player-bar');
+                const playerBar = __noizeeFindPlayerBar(document);
                 if (playerBar) {
                     setupObserver(playerBar);
-                    setupVideoListeners();
                     return;
                 }
                 setTimeout(waitForPlayerBar, 500);
@@ -89,6 +149,7 @@ extension SingletonPlayerWebView {
                     });
                     video.addEventListener('waiting', () => sendUpdate()); // Buffer state
                     video.addEventListener('seeked', () => sendUpdate()); // Seek completed
+                    video.addEventListener('durationchange', () => sendUpdate()); // New track loaded
 
                     // AirPlay state tracking
                     video.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
@@ -142,7 +203,7 @@ extension SingletonPlayerWebView {
                         enforceVolumeNow();
                         // Autoplay recovery: YTM sometimes leaves the video paused
                         // after navigation even with the WebKit autoplay allowance.
-                        const btn = document.querySelector('.play-pause-button.ytmusic-player-bar');
+                        const btn = document.querySelector('\(playPauseButtonSelector)');
                         __noizeeAttemptAutoplayRecovery(video, btn);
                     }
 
@@ -296,7 +357,8 @@ extension SingletonPlayerWebView {
                     const video = document.querySelector('video');
                     const isPlaying = video ? !video.paused : false;
 
-                    const progressBar = document.querySelector('#progress-bar');
+                    const progressBar = document.querySelector('ytmusic-player-bar #progress-bar');
+                    const timing = __noizeeReadProgress(video, progressBar);
 
                     // Extract track metadata
                     const titleEl = document.querySelector('.ytmusic-player-bar.title');
@@ -334,14 +396,19 @@ extension SingletonPlayerWebView {
                     if (thumbEl) {
                         thumbnailUrl = thumbEl.src || thumbEl.getAttribute('src') || '';
                     }
+                    if (!thumbnailUrl) {
+                        thumbnailUrl = __noizeeMediaSessionArtwork(navigator.mediaSession, title);
+                    }
 
-                    // Extract like status from the like button renderer
-                    let likeStatus = 'INDIFFERENT';
+                    // Extract like status from the like button renderer.
+                    // null when no renderer is mounted so Swift keeps the API-derived status.
+                    let likeStatus = null;
                     const likeRenderer = document.querySelector('ytmusic-like-button-renderer');
                     if (likeRenderer) {
                         const status = likeRenderer.getAttribute('like-status');
                         if (status === 'LIKE') likeStatus = 'LIKE';
                         else if (status === 'DISLIKE') likeStatus = 'DISLIKE';
+                        else likeStatus = 'INDIFFERENT';
                     }
 
                     // Check if track changed
@@ -386,8 +453,8 @@ extension SingletonPlayerWebView {
                     bridge.postMessage({
                         type: 'STATE_UPDATE',
                         isPlaying: isPlaying,
-                        progress: progressBar ? parseInt(progressBar.getAttribute('value') || '0') : 0,
-                        duration: progressBar ? parseInt(progressBar.getAttribute('aria-valuemax') || '0') : 0,
+                        progress: timing.progress,
+                        duration: timing.duration,
                         title: title,
                         artist: artist,
                         videoId: videoId,
@@ -400,9 +467,9 @@ extension SingletonPlayerWebView {
             }
 
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', waitForPlayerBar);
+                document.addEventListener('DOMContentLoaded', start);
             } else {
-                waitForPlayerBar();
+                start();
             }
         })();
         """
